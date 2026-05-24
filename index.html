@@ -76,14 +76,14 @@ var nextP4Id = 0;
         t: Date.now()/1000|0, acct:"test", pass:"123456",
         gps:[118.583128, 24.562736], use_bg:1, zoom:1.0,
         s: [
-            {i:0, n:"test1", gps:[118.583128, 24.562736], st:"OK", T:26.5, H:72.0, A:30, UV:0.0},
-            {i:1, n:"test2", gps:[118.583622, 24.564094], st:"OK", T:24.0, H:60.0, A:28, UV:2.5},
-            {i:2, n:"test3", gps:[118.584610, 24.563189], st:"FLU", T:22.5, H:55.0, A:32, UV:5.0},
-            {i:3, n:"test4", gps:[118.582140, 24.564727], st:"VIRT", T:19.8, H:48.0, A:40, UV:7.5},
-            {i:4, n:"test5", gps:[118.584906, 24.564365], st:"OK", T:21.0, H:52.0, A:35, UV:9.0},
-            {i:5, n:"test6", gps:[118.581646, 24.562736], st:"LOST", T:28.7, H:65.0, A:27, UV:4.0},
-            {i:6, n:"test7", gps:[118.583500, 24.565200], st:"OK", T:25.0, H:58.0, A:33, UV:3.0, img:1},
-            {i:7, n:"test8", gps:[118.581900, 24.561500], st:"VIRT", T:23.5, H:70.0, A:25, UV:1.5}
+            {id:0, n:"test1", gps:[118.583128, 24.562736], st:"OK", T:26.5, H:72.0, A:30, UV:0.0},
+            {id:1, n:"test2", gps:[118.583622, 24.564094], st:"OK", T:24.0, H:60.0, A:28, UV:2.5},
+            {id:2, n:"test3", gps:[118.584610, 24.563189], st:"FLU", T:22.5, H:55.0, A:32, UV:5.0},
+            {id:3, n:"test4", gps:[118.582140, 24.564727], st:"VIRT", T:19.8, H:48.0, A:40, UV:7.5},
+            {id:4, n:"test5", gps:[118.584906, 24.564365], st:"OK", T:21.0, H:52.0, A:35, UV:9.0},
+            {id:5, n:"test6", gps:[118.581646, 24.562736], st:"LOST", T:28.7, H:65.0, A:27, UV:4.0},
+            {id:6, n:"test7", gps:[118.583500, 24.565200], st:"OK", T:25.0, H:58.0, A:33, UV:3.0, img:1},
+            {id:7, n:"test8", gps:[118.581900, 24.561500], st:"VIRT", T:23.5, H:70.0, A:25, UV:1.5}
         ]
     };
     test._p4id = nextP4Id++;
@@ -195,25 +195,27 @@ function refreshDisplay() {
     var html = '', newKeys = {};
     arr.forEach(function(d) {
         if (!latest || d.t > latest.t) latest = d;
-        /* Per-P4 master marker.                                      */
-        var mkKey = key + '_' + d._p4id;
-        var mk = masterMarkers[mkKey];
-        if (!mk) {
-            mk = L.marker([d.gps[1], d.gps[0]], {
-                icon: L.divIcon({className:'dot-marker',
-                    html:'<div style="width:18px;height:18px;background:#e94560;border-radius:50%;border:3px solid #fff"></div>',
-                    iconSize:[18,18], iconAnchor:[9,9]})
-            }).addTo(map).bindTooltip('[M] ' + (d.acct||''),
-                {permanent:true,direction:'right',offset:[5,0]});
-            masterMarkers[mkKey] = mk;
-        } else {
-            mk.setLatLng([d.gps[1], d.gps[0]]);
+        /* Per-P4 master marker (only if GPS is set).                */
+        if (d.gps) {
+            var mkKey = key + '_' + d._p4id;
+            var mk = masterMarkers[mkKey];
+            if (!mk) {
+                mk = L.marker([d.gps[1], d.gps[0]], {
+                    icon: L.divIcon({className:'dot-marker',
+                        html:'<div style="width:18px;height:18px;background:#e94560;border-radius:50%;border:3px solid #fff"></div>',
+                        iconSize:[18,18], iconAnchor:[9,9]})
+                }).addTo(map).bindTooltip('[M] ' + (d.acct||''),
+                    {permanent:true,direction:'right',offset:[5,0]});
+                masterMarkers[mkKey] = mk;
+            } else {
+                mk.setLatLng([d.gps[1], d.gps[0]]);
+            }
         }
 
         d.s.forEach(function(s) {
             totalSlaves++;
             var st = s.st;
-            var gkey = d._p4id + '_' + s.i;   /* unique per P4+slave */
+            var gkey = d._p4id + '_' + (s.id||s.i);   /* unique per P4+slave id */
             newKeys[gkey] = true;
             var extra = '';
             if (s.T  !== undefined) extra += 'T='  + s.T.toFixed(1)  + 'C ';
@@ -249,10 +251,10 @@ function refreshDisplay() {
         document.getElementById('time').textContent =
             'Last update: ' + new Date(latest.t * 1000).toLocaleTimeString();
         document.getElementById('master').textContent =
-            'P4 units: ' + arr.length + '  GPS: ' +
-            latest.gps[1].toFixed(6) + ', ' + latest.gps[0].toFixed(6);
+            'P4 units: ' + arr.length +
+            (latest.gps ? '  GPS: ' + latest.gps[1].toFixed(6) + ', ' + latest.gps[0].toFixed(6) : '');
         document.getElementById('count').textContent = 'Slaves: ' + totalSlaves;
-        map.setView([latest.gps[1], latest.gps[0]]);
+        if (latest.gps) map.setView([latest.gps[1], latest.gps[0]]);
     }
     document.getElementById('slaves').innerHTML = html;
     for (var k in markers) {
