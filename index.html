@@ -121,17 +121,27 @@ mqttClient.on('message', function(topic, message) {
         var key = (d.acct||'') + ':' + (d.pass||'');
         if (d.acct && d.pass) {
             if (!allData[key]) allData[key] = [];
-            d._p4id = nextP4Id++;
+            /* Match existing P4 by GPS or just replace the first one if no GPS */
             var found = false;
             for (var i = 0; i < allData[key].length; i++) {
                 var ex = allData[key][i];
-                if (ex.gps && d.gps &&
+                if (ex.gps && d.gps && d.gps[0] !== 0 &&
                     Math.abs(ex.gps[0] - d.gps[0]) < 0.00001 &&
                     Math.abs(ex.gps[1] - d.gps[1]) < 0.00001) {
-                    allData[key][i] = d; found = true; break;
+                    d._p4id = ex._p4id; allData[key][i] = d; found = true; break;
                 }
             }
-            if (!found) allData[key].push(d);
+            if (!found) {
+                if (allData[key].length === 0) {
+                    d._p4id = nextP4Id++;
+                } else {
+                    /* No GPS — replace the first existing P4 */
+                    d._p4id = allData[key][0]._p4id;
+                    allData[key][0] = d;
+                    found = true;
+                }
+                if (!found) allData[key].push(d);
+            }
         }
         if (!loginAcct) return;
         refreshDisplay();
@@ -194,7 +204,8 @@ function refreshDisplay() {
     var html = '', newKeys = {};
     arr.forEach(function(d) {
         if (!latest || d.t > latest.t) latest = d;
-        if (d.gps) {
+        /* Only show master marker when GPS is actually set */
+        if (d.gps && d.gps[0] !== 0 && d.gps[1] !== 0) {
             var mkKey = key + '_' + d._p4id;
             var mk = masterMarkers[mkKey];
             if (!mk) {
