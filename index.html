@@ -182,10 +182,13 @@ function doLogin() {
 function sendCmd() {
     var cmd = document.getElementById('cmdInput').value.trim();
     if (!cmd) return;
-    if (mqttClient && mqttClient.connected) {
-        mqttClient.publish('esp32p4/cmd', cmd);
-        document.getElementById('cmdInput').value = '';
+    if (!mqttClient || !mqttClient.connected) {
+        alert('MQTT not connected!');
+        return;
     }
+    mqttClient.publish('esp32p4/cmd', cmd);
+    document.getElementById('status').textContent = 'Cmd sent: ' + cmd;
+    document.getElementById('cmdInput').value = '';
 }
 
 function doLogout() {
