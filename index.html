@@ -121,26 +121,26 @@ mqttClient.on('message', function(topic, message) {
         var key = (d.acct||'') + ':' + (d.pass||'');
         if (d.acct && d.pass) {
             if (!allData[key]) allData[key] = [];
-            /* Match existing P4 by GPS or just replace the first one if no GPS */
+            /* Match by GPS. If same location or no GPS, replace first entry.
+               Different GPS (>1km apart) = different P4 unit, keep both. */
             var found = false;
             for (var i = 0; i < allData[key].length; i++) {
                 var ex = allData[key][i];
-                if (ex.gps && d.gps && d.gps[0] !== 0 &&
+                if (ex.gps && d.gps &&
                     Math.abs(ex.gps[0] - d.gps[0]) < 0.00001 &&
                     Math.abs(ex.gps[1] - d.gps[1]) < 0.00001) {
-                    d._p4id = ex._p4id; allData[key][i] = d; found = true; break;
+                    allData[key][i] = d; found = true; break;
                 }
             }
             if (!found) {
                 if (allData[key].length === 0) {
                     d._p4id = nextP4Id++;
+                    allData[key].push(d);
                 } else {
-                    /* No GPS — replace the first existing P4 */
+                    /* Replace first entry (most common: single P4 per account) */
                     d._p4id = allData[key][0]._p4id;
                     allData[key][0] = d;
-                    found = true;
                 }
-                if (!found) allData[key].push(d);
             }
         }
         if (!loginAcct) return;
