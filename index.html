@@ -105,11 +105,6 @@ var nextP4Id = 0;
     };
     test._p4id = nextP4Id++;
     allData[test.acct + ':' + test.pass] = [test];
-
-    /* Also pre-load for P4 default account */
-    var p4data = JSON.parse(JSON.stringify(test));
-    p4data.acct = 'mytest'; p4data.pass = '666666'; p4data._p4id = nextP4Id++;
-    allData['mytest:666666'] = [p4data];
 })();
 
 /* ------ Map ------ */
@@ -163,18 +158,35 @@ mqttClient.on('close', function() {
 });
 
 /* ------ Login / Logout ------ */
+function acctExists(name) {
+    for (var k in allData) {
+        if (k.split(':')[0] === name) return true;
+    }
+    return false;
+}
+
 function doLogin() {
     var a = document.getElementById('loginAcct').value.trim();
     var p = document.getElementById('loginPass').value.trim();
+    var err = document.getElementById('loginErr');
     if (!a || !p) {
-        document.getElementById('loginErr').textContent = 'Enter account and password';
-        return;
+        err.textContent = 'Enter account and password'; return;
+    }
+    if (!acctExists(a)) {
+        err.textContent = 'Account error'; return;
+    }
+    if (!allData[a + ':' + p]) {
+        err.textContent = 'Password error'; return;
     }
     loginAcct = a;
     loginPass = p;
+    err.textContent = '';
     document.getElementById('login').style.display = 'none';
     document.getElementById('toolbar').style.display = 'flex';
     document.getElementById('account').textContent = 'Account: ' + a;
+    document.getElementById('master').textContent = 'Password: ' + p;
+    document.getElementById('zoom').style.display = 'none';
+    document.getElementById('bg').style.display = 'none';
     publishCount = 0;
     refreshDisplay();
 }
@@ -202,6 +214,9 @@ function doLogout() {
     masterMarkers = {};
     document.getElementById('slaves').innerHTML = '';
     document.getElementById('counter').textContent = '0000';
+    document.getElementById('master').textContent = 'GPS: --';
+    document.getElementById('zoom').style.display = '';
+    document.getElementById('bg').style.display = '';
 }
 
 /* ------ Display refresh ------ */
