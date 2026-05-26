@@ -144,33 +144,15 @@ mqttClient.on('close', function() {
 });
 
 /* ------ Login / Logout ------ */
-function hasAccount(acct) {
-    for (var k in allData) {
-        if (k.split(':')[0] === acct) return true;
-    }
-    return false;
-}
-function checkPass(acct, pass) {
-    return allData[acct + ':' + pass] !== undefined;
-}
-
 function doLogin() {
     var a = document.getElementById('loginAcct').value.trim();
     var p = document.getElementById('loginPass').value.trim();
-    var err = document.getElementById('loginErr');
     if (!a || !p) {
-        err.textContent = 'Enter account and password'; return;
-    }
-    /* Check if any data for this account has been received */
-    if (!hasAccount(a)) {
-        err.textContent = 'Wrong account'; return;
-    }
-    if (!checkPass(a, p)) {
-        err.textContent = 'Wrong password'; return;
+        document.getElementById('loginErr').textContent = 'Enter account and password';
+        return;
     }
     loginAcct = a;
     loginPass = p;
-    err.textContent = '';
     document.getElementById('login').style.display = 'none';
     document.getElementById('toolbar').style.display = 'flex';
     document.getElementById('account').textContent = 'Account: ' + a;
