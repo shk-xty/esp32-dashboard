@@ -63,6 +63,18 @@ h3{font-size:13px;margin-top:8px;color:#f5c518}
 <div id="status">Connecting...</div>
 
 <script>
+/* ------ MQTT (HiveMQ) ------ */
+var mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+    clientId: 'web_' + Math.random().toString(16).substr(2,8),
+    keepalive: 60, clean: true
+});
+
+mqttClient.on('connect', function() {
+    document.getElementById('status').textContent = 'Connected';
+    document.getElementById('status').style.color = '#0f0';
+    mqttClient.subscribe('esp32p4/status');
+});
+
 /* ------ Login state ------ */
 var loginAcct = '';
 var loginPass = '';
@@ -70,7 +82,7 @@ var publishCount = 0;
 var allData = {};
 var nextP4Id = 0;
 
-/* Pre-loaded test data: 8 slaves around Xiamen Jimei */
+/* Pre-loaded test data */
 (function() {
     var test = {
         t: Date.now()/1000|0, acct:"test", pass:"123456",
@@ -99,49 +111,34 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 var markers = {};
 var masterMarkers = {};
 
-/* ------ MQTT ------ */
-var mqtt = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-    clientId: 'web_' + Math.random().toString(16).substr(2,8),
-    keepalive: 60, clean: true
-});
-
-mqtt.on('connect', function() {
-    document.getElementById('status').textContent = 'Connected';
-    document.getElementById('status').style.color = '#0f0';
-    mqtt.subscribe('esp32p4/status');
-});
-
-mqtt.on('message', function(topic, message) {
+mqttClient.on('message', function(topic, message) {
     try {
         var d = JSON.parse(message.toString());
-        /* Store by account key — append to array so multiple P4s
-           with the same account merge their slave lists.              */
         var key = (d.acct||'') + ':' + (d.pass||'');
         if (d.acct && d.pass) {
             if (!allData[key]) allData[key] = [];
             d._p4id = nextP4Id++;
-            /* Replace or append: match by GPS proximity (~1 m).       */
             var found = false;
             for (var i = 0; i < allData[key].length; i++) {
                 var ex = allData[key][i];
-                if (Math.abs(ex.gps[0] - d.gps[0]) < 0.00001 &&
+                if (ex.gps && d.gps &&
+                    Math.abs(ex.gps[0] - d.gps[0]) < 0.00001 &&
                     Math.abs(ex.gps[1] - d.gps[1]) < 0.00001) {
                     allData[key][i] = d; found = true; break;
                 }
             }
             if (!found) allData[key].push(d);
         }
-
         if (!loginAcct) return;
         refreshDisplay();
     } catch(e) {}
 });
 
-mqtt.on('error', function() {
+mqttClient.on('error', function() {
     document.getElementById('status').textContent = 'MQTT error';
     document.getElementById('status').style.color = '#f00';
 });
-mqtt.on('close', function() {
+mqttClient.on('close', function() {
     document.getElementById('status').textContent = 'Disconnected';
     document.getElementById('status').style.color = '#f00';
 });
@@ -168,7 +165,6 @@ function doLogout() {
     loginPass = '';
     document.getElementById('login').style.display = 'flex';
     document.getElementById('toolbar').style.display = 'none';
-    /* Clear markers */
     for (var k in markers) { map.removeLayer(markers[k]); }
     markers = {};
     for (var k in masterMarkers) { map.removeLayer(masterMarkers[k]); }
@@ -190,12 +186,10 @@ function refreshDisplay() {
     document.getElementById('counter').textContent =
         String(publishCount).padStart(4, '0');
 
-    /* Merge data from all P4s under this account.                    */
     var latest = null, totalSlaves = 0;
     var html = '', newKeys = {};
     arr.forEach(function(d) {
         if (!latest || d.t > latest.t) latest = d;
-        /* Per-P4 master marker (only if GPS is set).                */
         if (d.gps) {
             var mkKey = key + '_' + d._p4id;
             var mk = masterMarkers[mkKey];
@@ -215,7 +209,7 @@ function refreshDisplay() {
         d.s.forEach(function(s) {
             totalSlaves++;
             var st = s.st;
-            var gkey = d._p4id + '_' + (s.id||s.i);   /* unique per P4+slave id */
+            var gkey = d._p4id + '_' + (s.id||s.i);
             newKeys[gkey] = true;
             var extra = '';
             if (s.T  !== undefined) extra += 'T='  + s.T.toFixed(1)  + 'C ';
@@ -260,7 +254,27 @@ function refreshDisplay() {
     for (var k in markers) {
         if (!newKeys[k]) { map.removeLayer(markers[k]); delete markers[k]; }
     }
+
+    /* Persist across refreshes */
+    try {
+        localStorage.setItem('esp32p4_data', JSON.stringify(allData));
+    } catch(e) {}
 }
+
+/* Restore cached data on load */
+try {
+    var cached = localStorage.getItem('esp32p4_data');
+    if (cached) {
+        var obj = JSON.parse(cached);
+        for (var k in obj) {
+            if (!allData[k]) allData[k] = [];
+            for (var i = 0; i < obj[k].length; i++) {
+                obj[k][i]._p4id = nextP4Id++;
+                allData[k].push(obj[k][i]);
+            }
+        }
+    }
+} catch(e) {}
 </script>
 </body>
 </html>
