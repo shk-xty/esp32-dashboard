@@ -99,8 +99,12 @@ var nextP4Id = 0;
         ]
     };
     test._p4id = nextP4Id++;
-    var key = test.acct + ':' + test.pass;
-    allData[key] = [test];
+    allData[test.acct + ':' + test.pass] = [test];
+
+    /* Also pre-load for P4 default account */
+    var p4data = JSON.parse(JSON.stringify(test));
+    p4data.acct = 'mytest'; p4data.pass = '666666'; p4data._p4id = nextP4Id++;
+    allData['mytest:666666'] = [p4data];
 })();
 
 /* ------ Map ------ */
