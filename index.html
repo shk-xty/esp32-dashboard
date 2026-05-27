@@ -194,12 +194,21 @@ function doLogin() {
 function sendCmd() {
     var cmd = document.getElementById('cmdInput').value.trim();
     if (!cmd) return;
-    if (!mqttClient || !mqttClient.connected) {
-        alert('MQTT not connected!');
-        return;
+    /* Write to jsonblob + publish to MQTT (best effort). */
+    var blobUrl = 'https://jsonblob.com/api/jsonBlob/019e6a89-6b51-795e-9e7f-409e560eb1ea';
+    fetch(blobUrl, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({cmd:cmd})
+    }).then(function(r) {
+        if (r.ok) document.getElementById('status').textContent = 'Cmd sent: ' + cmd;
+        else document.getElementById('status').textContent = 'Send failed';
+    }).catch(function() {
+        document.getElementById('status').textContent = 'Send error';
+    });
+    if (mqttClient && mqttClient.connected) {
+        mqttClient.publish('esp32p4/cmd', cmd);
     }
-    mqttClient.publish('esp32p4/cmd', cmd);
-    document.getElementById('status').textContent = 'Cmd sent: ' + cmd;
     document.getElementById('cmdInput').value = '';
 }
 
