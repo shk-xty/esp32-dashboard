@@ -227,24 +227,15 @@ function sendPreset(cmd) {
 }
 
 function sendAtCommand(cmd) {
-    /* Show what we're sending */
     var respDiv = document.getElementById('cmdResp');
     respDiv.style.display = 'block';
     respDiv.textContent = '> ' + cmd + '\n...';
-    /* Write to jsonblob + publish to MQTT (best effort). */
-    var blobUrl = 'https://jsonblob.com/api/jsonBlob/019e6a89-6b51-795e-9e7f-409e560eb1ea';
-    fetch(blobUrl, {
-        method: 'PUT',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({cmd:cmd})
-    }).then(function(r) {
-        if (r.ok) document.getElementById('status').textContent = 'AT sent: ' + cmd;
-        else document.getElementById('status').textContent = 'Send failed';
-    }).catch(function() {
-        document.getElementById('status').textContent = 'Send error';
-    });
+
     if (mqttClient && mqttClient.connected) {
         mqttClient.publish('esp32p4/cmd', cmd);
+        document.getElementById('status').textContent = 'AT sent: ' + cmd;
+    } else {
+        document.getElementById('status').textContent = 'MQTT offline';
     }
 }
 
