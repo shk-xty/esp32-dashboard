@@ -56,11 +56,23 @@ h3{font-size:13px;margin-top:8px;color:#f5c518}
   <div class="stat" id="bg">Map bg: --</div>
   <div class="stat" id="time">Last update: --</div>
   <div class="stat" id="count">Slaves: 0</div>
-  <h3>Cmd</h3>
-  <div style="display:flex;gap:4px;margin-bottom:8px">
-    <input id="cmdInput" placeholder="Command JSON" style="flex:1;padding:4px;font-size:12px;background:#1a1a2e;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px">
+  <h3>AT Terminal (A7670C)</h3>
+  <div style="margin-bottom:4px;color:#888;font-size:10px">Send AT commands to the 4G module on ESP32-P4</div>
+  <div style="display:flex;gap:4px;margin-bottom:4px">
+    <input id="cmdInput" placeholder="AT command..." style="flex:1;padding:4px;font-size:12px;background:#1a1a2e;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px"
+           onkeydown="if(event.key==='Enter')sendCmd()">
     <button onclick="sendCmd()" style="padding:4px 8px;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer">Send</button>
   </div>
+  <div style="display:flex;gap:3px;margin-bottom:6px;flex-wrap:wrap">
+    <button onclick="sendPreset('AT')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">AT</button>
+    <button onclick="sendPreset('AT+CSQ')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CSQ</button>
+    <button onclick="sendPreset('AT+CREG?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CREG?</button>
+    <button onclick="sendPreset('AT+CGATT?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CGATT?</button>
+    <button onclick="sendPreset('AT+COPS?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">COPS?</button>
+    <button onclick="sendPreset('AT+CGACT?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CGACT?</button>
+    <button onclick="sendPreset('AT+HTTPINIT')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">HTTPINIT</button>
+  </div>
+  <div id="cmdResp" style="background:#0a0a1e;color:#0f0;font-size:11px;padding:6px;border-radius:4px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;border:1px solid #0f3460"></div>
   <h3>Slaves</h3>
   <div id="slaves"></div>
 </div>
@@ -78,6 +90,7 @@ mqttClient.on('connect', function() {
     document.getElementById('status').textContent = 'Connected';
     document.getElementById('status').style.color = '#0f0';
     mqttClient.subscribe('esp32p4/status');
+    mqttClient.subscribe('esp32p4/resp');
 });
 
 /* ------ Login state ------ */
@@ -116,6 +129,17 @@ var markers = {};
 var masterMarkers = {};
 
 mqttClient.on('message', function(topic, message) {
+    /* Handle AT command responses */
+    if (topic === 'esp32p4/resp') {
+        var respDiv = document.getElementById('cmdResp');
+        respDiv.style.display = 'block';
+        var txt = message.toString();
+        respDiv.textContent = txt;
+        document.getElementById('status').textContent = 'AT resp received';
+        return;
+    }
+
+    /* Normal status update */
     try {
         var d = JSON.parse(message.toString());
         var key = (d.acct||'') + ':' + (d.pass||'');
@@ -194,6 +218,19 @@ function doLogin() {
 function sendCmd() {
     var cmd = document.getElementById('cmdInput').value.trim();
     if (!cmd) return;
+    sendAtCommand(cmd);
+    document.getElementById('cmdInput').value = '';
+}
+
+function sendPreset(cmd) {
+    sendAtCommand(cmd);
+}
+
+function sendAtCommand(cmd) {
+    /* Show what we're sending */
+    var respDiv = document.getElementById('cmdResp');
+    respDiv.style.display = 'block';
+    respDiv.textContent = '> ' + cmd + '\n...';
     /* Write to jsonblob + publish to MQTT (best effort). */
     var blobUrl = 'https://jsonblob.com/api/jsonBlob/019e6a89-6b51-795e-9e7f-409e560eb1ea';
     fetch(blobUrl, {
@@ -201,7 +238,7 @@ function sendCmd() {
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({cmd:cmd})
     }).then(function(r) {
-        if (r.ok) document.getElementById('status').textContent = 'Cmd sent: ' + cmd;
+        if (r.ok) document.getElementById('status').textContent = 'AT sent: ' + cmd;
         else document.getElementById('status').textContent = 'Send failed';
     }).catch(function() {
         document.getElementById('status').textContent = 'Send error';
@@ -209,7 +246,6 @@ function sendCmd() {
     if (mqttClient && mqttClient.connected) {
         mqttClient.publish('esp32p4/cmd', cmd);
     }
-    document.getElementById('cmdInput').value = '';
 }
 
 function doLogout() {
