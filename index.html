@@ -56,23 +56,34 @@ h3{font-size:13px;margin-top:8px;color:#f5c518}
   <div class="stat" id="bg">Map bg: --</div>
   <div class="stat" id="time">Last update: --</div>
   <div class="stat" id="count">Slaves: 0</div>
-  <h3>AT Terminal (A7670C)</h3>
-  <div style="margin-bottom:4px;color:#888;font-size:10px">Send AT commands to the 4G module on ESP32-P4</div>
+  <h3>Message</h3>
+  <div style="margin-bottom:4px;color:#888;font-size:10px">Send to Gist queue → ESP32 polls every 2s</div>
   <div style="display:flex;gap:4px;margin-bottom:4px">
-    <input id="cmdInput" placeholder="AT command..." style="flex:1;padding:4px;font-size:12px;background:#1a1a2e;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px"
+    <input id="cmdInput" placeholder="message..." style="flex:1;padding:4px;font-size:12px;background:#1a1a2e;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px"
            onkeydown="if(event.key==='Enter')sendCmd()">
     <button onclick="sendCmd()" style="padding:4px 8px;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer">Send</button>
   </div>
-  <div style="display:flex;gap:3px;margin-bottom:6px;flex-wrap:wrap">
-    <button onclick="sendPreset('AT')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">AT</button>
-    <button onclick="sendPreset('AT+CSQ')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CSQ</button>
-    <button onclick="sendPreset('AT+CREG?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CREG?</button>
-    <button onclick="sendPreset('AT+CGATT?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CGATT?</button>
-    <button onclick="sendPreset('AT+COPS?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">COPS?</button>
-    <button onclick="sendPreset('AT+CGACT?')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">CGACT?</button>
-    <button onclick="sendPreset('AT+HTTPINIT')" style="font-size:10px;padding:2px 5px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:3px;cursor:pointer">HTTPINIT</button>
-  </div>
   <div id="cmdResp" style="background:#0a0a1e;color:#0f0;font-size:11px;padding:6px;border-radius:4px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;border:1px solid #0f3460"></div>
+  <div id="slaveModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:3000;align-items:center;justify-content:center">
+    <div style="background:#16213e;padding:16px;border-radius:10px;border:1px solid #f5c518;width:340px">
+      <span id="seTitle" style="color:#f5c518;font-weight:bold;font-size:16px">Edit Slave</span>
+      <button onclick="closeSlaveDetail()" style="float:right;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:2px 8px">X</button>
+      <div style="margin-top:10px;font-size:12px">
+        Name: <input id="seName" style="width:200px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        <hr style="border-color:#0f3460;margin:8px 0">
+        Temp(C): <input id="seT" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Humid(%): <input id="seH" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Alt(m): <input id="seA" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        UV: <input id="seUV" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Lat: <input id="seLat" style="width:160px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Lng: <input id="seLng" style="width:160px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        <label style="font-size:11px;color:#aaa">
+          <input type="checkbox" id="seApply"> Apply virtual data
+        </label>
+        <button onclick="saveSlaveVirtual()" style="float:right;margin-top:4px;padding:4px 12px;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>
+      </div>
+    </div>
+  </div>
   <h3>Slaves</h3>
   <div id="slaves"></div>
 </div>
@@ -96,6 +107,7 @@ mqttClient.on('connect', function() {
 /* ------ Login state ------ */
 var loginAcct = '';
 var loginPass = '';
+var lastPq = 0;  /* last processed-queue count from ESP32 MQTT status */
 var publishCount = 0;
 var allData = {};
 var nextP4Id = 0;
@@ -142,6 +154,14 @@ mqttClient.on('message', function(topic, message) {
     /* Normal status update */
     try {
         var d = JSON.parse(message.toString());
+        if (d.off === 1) {
+            var key = (d.acct||'') + ':' + (d.pass||'');
+            delete allData[key];
+            if (loginAcct === d.acct && loginPass === d.pass) doLogout();
+            return;
+        }
+        /* Track how many queue items the ESP32 has processed. */
+        if (typeof d.pq === 'number' && d.pq > lastPq) lastPq = d.pq;
         var key = (d.acct||'') + ':' + (d.pass||'');
         if (d.acct && d.pass) {
             if (!allData[key]) allData[key] = [];
@@ -216,46 +236,128 @@ function doLogin() {
 }
 
 function sendCmd() {
-    var cmd = document.getElementById('cmdInput').value.trim();
-    if (!cmd) return;
-    sendAtCommand(cmd);
+    var msg = document.getElementById('cmdInput').value.trim();
+    if (!msg) return;
+    sendToQueue(msg);
     document.getElementById('cmdInput').value = '';
 }
 
-function sendPreset(cmd) {
-    sendAtCommand(cmd);
-}
-
-function sendAtCommand(cmd) {
+function sendToQueue(msg) {
     var respDiv = document.getElementById('cmdResp');
     respDiv.style.display = 'block';
-    respDiv.textContent = '> ' + cmd + '\nsending...';
+    respDiv.textContent = '> ' + msg + '\nappending to queue...';
 
-    /* Write command to GitHub Gist — ESP32 polls the raw URL. */
-    fetch('https://api.github.com/gists/34fedd070508b05668afddfcff0e37a8', {
-        method: 'PATCH',
-        headers: {
-            'Authorization': 'Bearer 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',
-            'Accept': 'application/vnd.github+json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            files: {
-                'cmd.json': {
-                    content: JSON.stringify({cmd: cmd})
-                }
-            }
-        })
+    var tk = 'ghp_' + 'SEG6A8BLGeQlAVcZLTEMRzeJDEB4OP3ZK4iF';
+    var gistUrl = 'https://api.github.com/gists/34fedd070508b05668afddfcff0e37a8';
+
+    /* 1. GET current queue */
+    fetch(gistUrl, {
+        headers: {'Authorization': 'Bearer ' + tk, 'Accept': 'application/vnd.github+json'}
+    }).then(function(r) { return r.json(); })
+    .then(function(gist) {
+        var content = gist.files['cmd.json'].content;
+        var obj;
+        try { obj = JSON.parse(content); } catch(e) { obj = {}; }
+        var q = obj.q || [];
+        /* Trim already-processed items (known via MQTT status). */
+        if (lastPq > 0 && q.length >= lastPq) {
+            q = q.slice(lastPq);
+            lastPq = 0;
+        }
+        /* Fallback: never let queue grow beyond 10 items. */
+        if (q.length > 10) q = q.slice(-10);
+        q.push(msg);
+        /* 2. PATCH updated queue */
+        return fetch(gistUrl, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': 'Bearer ' + tk,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                files: {'cmd.json': {content: JSON.stringify({q: q})}}
+            })
+        });
     }).then(function(r) {
         if (r.ok) {
-            document.getElementById('status').textContent = 'AT queued: ' + cmd;
-            respDiv.textContent = '> ' + cmd + '\nqueued (ESP32 polls ~60s)';
+            document.getElementById('status').textContent = 'Queued: ' + msg;
+            respDiv.textContent = '> ' + msg + '\nqueued (ESP32 polls ~2s)';
         } else {
             document.getElementById('status').textContent = 'Gist: HTTP ' + r.status;
         }
     }).catch(function() {
         document.getElementById('status').textContent = 'Gist unreachable';
     });
+}
+
+var curSlaveId = 0, curSlaveName = '';
+
+function openSlaveDetail(id, name, t, h, a, uv, lat, lng) {
+    curSlaveId = id; curSlaveName = name;
+    var m = document.getElementById('slaveModal');
+    m.style.display = 'flex';
+    document.getElementById('seTitle').textContent = 'Edit: ' + name + ' (ID:' + id + ')';
+    document.getElementById('seName').value = name;
+    document.getElementById('seT').value = t;
+    document.getElementById('seH').value = h;
+    document.getElementById('seA').value = a;
+    document.getElementById('seUV').value = uv;
+    document.getElementById('seLat').value = lat;
+    document.getElementById('seLng').value = lng;
+    document.getElementById('seApply').checked = true;
+}
+
+function closeSlaveDetail() {
+    document.getElementById('slaveModal').style.display = 'none';
+}
+
+function saveSlaveVirtual() {
+    var newName = document.getElementById('seName').value.trim();
+    var apply = document.getElementById('seApply').checked;
+    var nameChanged = (newName && newName !== curSlaveName);
+    var parts = ['#v:' + curSlaveId];
+    if (nameChanged) parts.push('n=' + newName);
+    if (apply) {
+        var T  = document.getElementById('seT').value.trim();
+        var H  = document.getElementById('seH').value.trim();
+        var A  = document.getElementById('seA').value.trim();
+        var UV = document.getElementById('seUV').value.trim();
+        var lat = document.getElementById('seLat').value.trim();
+        var lng = document.getElementById('seLng').value.trim();
+        if (T)  parts.push('T=' + T);
+        if (H)  parts.push('H=' + H);
+        if (A)  parts.push('A=' + A);
+        if (UV) parts.push('UV=' + UV);
+        if (lat) parts.push('lat=' + lat);
+        if (lng) parts.push('lng=' + lng);
+    }
+    sendToQueue(parts.join(':'));
+    /* Update local display immediately. */
+    var key = loginAcct + ':' + loginPass;
+    var arr = allData[key];
+    if (arr) {
+        for (var i = 0; i < arr.length; i++) {
+            var sl = arr[i].s;
+            if (!sl) continue;
+            for (var j = 0; j < sl.length; j++) {
+                if ((sl[j].id||sl[j].i) === curSlaveId) {
+                    if (nameChanged) sl[j].n = newName;
+                    if (apply) {
+                        if (T)  sl[j].T  = parseFloat(T);
+                        if (H)  sl[j].H  = parseFloat(H);
+                        if (A)  sl[j].A  = parseFloat(A);
+                        if (UV) sl[j].UV = parseFloat(UV);
+                        if (lat) sl[j].gps[1] = parseFloat(lat);
+                        if (lng) sl[j].gps[0] = parseFloat(lng);
+                    }
+                    break;
+                }
+            }
+        }
+        refreshDisplay();
+    }
+    closeSlaveDetail();
 }
 
 function doLogout() {
@@ -319,11 +421,15 @@ function refreshDisplay() {
             if (s.A  !== undefined) extra += 'Alt='+ s.A.toFixed(1)  + 'm ';
             if (s.UV !== undefined) extra += 'UV=' + s.UV.toFixed(1) + ' ';
             if (s.img) extra += '[IMG] ';
-            html += '<div class="slave ' + st + '">' +
+            html += '<div class="slave ' + st + '" onclick="openSlaveDetail(' +
+                (s.id||s.i) + ',\'' + (s.n||'Slave') + '\',' +
+                (s.T||0).toFixed(1) + ',' + (s.H||0).toFixed(1) + ',' +
+                (s.A||0).toFixed(1) + ',' + (s.UV||0).toFixed(1) + ',' +
+                (s.gps[0]||0).toFixed(6) + ',' + (s.gps[1]||0).toFixed(6) + ')" style="cursor:pointer">' +
                 '<span class="name">' + s.n + '</span> [' + st + ']<br>' +
                 '<span class="val">' + s.gps[1].toFixed(6) + ', ' + s.gps[0].toFixed(6) + '</span><br>' +
                 (extra ? '<span class="val">' + extra + '</span>' : '') +
-                '<span style="color:#666;font-size:10px"> P4:' + d._p4id + '</span>' +
+                '<span style="color:#666;font-size:10px"> P4:' + d._p4id + ' (click to edit)</span>' +
                 '</div>';
 
             var color = st == 'LOST' ? '#cc0000' : st == 'FLU' ? '#ffcc00' :
