@@ -231,23 +231,30 @@ function sendAtCommand(cmd) {
     respDiv.style.display = 'block';
     respDiv.textContent = '> ' + cmd + '\nsending...';
 
-    /* Write to jsonblob — ESP32 polls every 10 s via HTTP GET.
-       (A7670C firmware does not support MQTT SUB, so MQTT publish
-       to esp32p4/cmd would not reach the device.)                   */
-    var blobUrl = 'https://jsonblob.com/api/jsonBlob/019e6a89-6b51-795e-9e7f-409e560eb1ea';
-    fetch(blobUrl, {
-        method: 'PUT',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({cmd:cmd})
+    /* Write command to GitHub Gist — ESP32 polls the raw URL. */
+    fetch('https://api.github.com/gists/34fedd070508b05668afddfcff0e37a8', {
+        method: 'PATCH',
+        headers: {
+            'Authorization': 'Bearer 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',
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            files: {
+                'cmd.json': {
+                    content: JSON.stringify({cmd: cmd})
+                }
+            }
+        })
     }).then(function(r) {
         if (r.ok) {
             document.getElementById('status').textContent = 'AT queued: ' + cmd;
-            respDiv.textContent = '> ' + cmd + '\nqueued (ESP32 polls ~10s)';
+            respDiv.textContent = '> ' + cmd + '\nqueued (ESP32 polls ~60s)';
         } else {
-            document.getElementById('status').textContent = 'jsonblob: HTTP ' + r.status;
+            document.getElementById('status').textContent = 'Gist: HTTP ' + r.status;
         }
     }).catch(function() {
-        document.getElementById('status').textContent = 'jsonblob unreachable';
+        document.getElementById('status').textContent = 'Gist unreachable';
     });
 }
 
