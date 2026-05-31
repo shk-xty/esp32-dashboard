@@ -64,6 +64,36 @@ h3{font-size:13px;margin-top:8px;color:#f5c518}
     <button onclick="sendCmd()" style="padding:4px 8px;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer">Send</button>
   </div>
   <div id="cmdResp" style="background:#0a0a1e;color:#0f0;font-size:11px;padding:6px;border-radius:4px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;display:none;border:1px solid #0f3460"></div>
+  <h3>Pending Queue</h3>
+  <div id="pendingQ" style="background:#0a0a1e;color:#f5c518;font-size:10px;padding:6px;border-radius:4px;max-height:100px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #0f3460;min-height:20px">--</div>
+  <!-- Set WiFi Modal -->
+  <div id="wifiModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:3000;align-items:center;justify-content:center">
+    <div style="background:#16213e;padding:16px;border-radius:10px;border:1px solid #f5c518;width:340px">
+      <span style="color:#f5c518;font-weight:bold;font-size:16px">Set WiFi SSID</span>
+      <button onclick="document.getElementById('wifiModal').style.display='none'" style="float:right;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:2px 8px">X</button>
+      <div style="margin-top:10px;font-size:12px">
+        SSID: <input id="wifiSsid" style="width:200px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        <button onclick="saveWifi()" style="margin-top:8px;padding:4px 12px;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>
+      </div>
+    </div>
+  </div>
+  <!-- Add Virtual Modal -->
+  <div id="addvModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:3000;align-items:center;justify-content:center">
+    <div style="background:#16213e;padding:16px;border-radius:10px;border:1px solid #f5c518;width:340px">
+      <span style="color:#f5c518;font-weight:bold;font-size:16px">Add Virtual Slave</span>
+      <button onclick="document.getElementById('addvModal').style.display='none'" style="float:right;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer;padding:2px 8px">X</button>
+      <div style="margin-top:10px;font-size:12px">
+        Name: <input id="avName" style="width:200px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Lng: <input id="avLng" style="width:160px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Lat: <input id="avLat" style="width:160px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Temp(C): <input id="avT" value="26.5" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Humid(%): <input id="avH" value="72" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        Alt(m): <input id="avA" value="30" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        UV: <input id="avUV" value="0" style="width:80px;background:#0a0a1e;color:#e0e0e0;border:1px solid #333;padding:3px"><br>
+        <button onclick="saveAddv()" style="margin-top:8px;padding:4px 12px;font-size:12px;background:#e94560;color:#fff;border:none;border-radius:4px;cursor:pointer">Add</button>
+      </div>
+    </div>
+  </div>
   <div id="slaveModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:3000;align-items:center;justify-content:center">
     <div style="background:#16213e;padding:16px;border-radius:10px;border:1px solid #f5c518;width:340px">
       <span id="seTitle" style="color:#f5c518;font-weight:bold;font-size:16px">Edit Slave</span>
@@ -84,6 +114,10 @@ h3{font-size:13px;margin-top:8px;color:#f5c518}
       </div>
     </div>
   </div>
+  <div style="display:flex;gap:4px;margin-bottom:8px">
+    <button onclick="showWifiModal()" style="padding:4px 10px;font-size:12px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:4px;cursor:pointer">Set WiFi</button>
+    <button onclick="showAddvModal()" style="padding:4px 10px;font-size:12px;background:#0f3460;color:#ccc;border:1px solid #1a5080;border-radius:4px;cursor:pointer">Add Virtual</button>
+  </div>
   <h3>Slaves</h3>
   <div id="slaves"></div>
 </div>
@@ -103,6 +137,36 @@ mqttClient.on('connect', function() {
     mqttClient.subscribe('esp32p4/status');
     mqttClient.subscribe('esp32p4/resp');
 });
+
+/* WGS-84 → GCJ-02 (Amap) coordinate transform.
+   P4 uses Amap tiles (GCJ-02), Leaflet uses OSM (WGS-84).
+   Convert so both maps show the same position.            */
+function wgs2gcj(lng, lat) {
+    var a = 6378245.0, ee = 0.006693421622965943;
+    var dlat = (function(x, y) {
+        var r = -100.0 + 2.0*x + 3.0*y + 0.2*y*y + 0.1*x*y + 0.2*Math.sqrt(Math.abs(x));
+        r += (20.0*Math.sin(6.0*x*Math.PI) + 20.0*Math.sin(2.0*x*Math.PI)) * 2.0 / 3.0;
+        r += (20.0*Math.sin(y*Math.PI) + 40.0*Math.sin(y/3.0*Math.PI)) * 2.0 / 3.0;
+        r += (160.0*Math.sin(y/12.0*Math.PI) + 320.0*Math.sin(y*Math.PI/30.0)) * 2.0 / 3.0;
+        return r;
+    })(lng - 105.0, lat - 35.0);
+    var dlng = (function(x, y) {
+        var r = 300.0 + x + 2.0*y + 0.1*x*x + 0.1*x*y + 0.1*Math.sqrt(Math.abs(x));
+        r += (20.0*Math.sin(6.0*x*Math.PI) + 20.0*Math.sin(2.0*x*Math.PI)) * 2.0 / 3.0;
+        r += (20.0*Math.sin(x*Math.PI) + 40.0*Math.sin(x/3.0*Math.PI)) * 2.0 / 3.0;
+        r += (150.0*Math.sin(x/12.0*Math.PI) + 300.0*Math.sin(x/30.0*Math.PI)) * 2.0 / 3.0;
+        return r;
+    })(lng - 105.0, lat - 35.0);
+    var rad = lat * Math.PI / 180.0;
+    var m = 1 - ee * Math.sin(rad) * Math.sin(rad);
+    var sq = Math.sqrt(m);
+    return [lng + dlng*180.0/(a/sq*Math.cos(rad)*Math.PI), lat + dlat*180.0/(a*(1-ee)/(m*sq)*Math.PI)];
+}
+/* Convert [lng,lat] array in place. */
+function gpsToGcj(arr) {
+    var c = wgs2gcj(arr[0], arr[1]);
+    return [c[0], c[1]];
+}
 
 /* ------ Login state ------ */
 var loginAcct = '';
@@ -161,7 +225,10 @@ mqttClient.on('message', function(topic, message) {
             return;
         }
         /* Track how many queue items the ESP32 has processed. */
-        if (typeof d.pq === 'number' && d.pq > lastPq) lastPq = d.pq;
+        if (typeof d.pq === 'number' && d.pq > lastPq) {
+            lastPq = d.pq;
+            trimGistQueue();
+        }
         var key = (d.acct||'') + ':' + (d.pass||'');
         if (d.acct && d.pass) {
             if (!allData[key]) allData[key] = [];
@@ -267,6 +334,17 @@ function sendToQueue(msg) {
         /* Fallback: never let queue grow beyond 10 items. */
         if (q.length > 10) q = q.slice(-10);
         q.push(msg);
+        /* Show pending queue in sidebar. */
+        var pqDiv = document.getElementById('pendingQ');
+        if (q.length === 0) pqDiv.textContent = '(empty)';
+        else {
+            var lines = [];
+            for (var i = 0; i < q.length; i++) {
+                var m = q[i];
+                lines.push('[' + i + '] ' + (m.length > 40 ? m.substr(0,38) + '..' : m));
+            }
+            pqDiv.textContent = lines.join('\n');
+        }
         /* 2. PATCH updated queue */
         return fetch(gistUrl, {
             method: 'PATCH',
@@ -312,6 +390,33 @@ function closeSlaveDetail() {
     document.getElementById('slaveModal').style.display = 'none';
 }
 
+function showWifiModal() {
+    document.getElementById('wifiModal').style.display = 'flex';
+}
+function saveWifi() {
+    var ssid = document.getElementById('wifiSsid').value.trim();
+    if (!ssid) return;
+    sendToQueue('@wifi:' + ssid);
+    document.getElementById('wifiModal').style.display = 'none';
+}
+
+function showAddvModal() {
+    document.getElementById('addvModal').style.display = 'flex';
+}
+function saveAddv() {
+    var name = document.getElementById('avName').value.trim();
+    if (!name) return;
+    var parts = ['@addv:' + name];
+    parts.push(document.getElementById('avLng').value.trim() || '0');
+    parts.push(document.getElementById('avLat').value.trim() || '0');
+    parts.push(document.getElementById('avT').value.trim() || '0');
+    parts.push(document.getElementById('avH').value.trim() || '0');
+    parts.push(document.getElementById('avA').value.trim() || '0');
+    parts.push(document.getElementById('avUV').value.trim() || '0');
+    sendToQueue(parts.join(':'));
+    document.getElementById('addvModal').style.display = 'none';
+}
+
 function saveSlaveVirtual() {
     var newName = document.getElementById('seName').value.trim();
     var apply = document.getElementById('seApply').checked;
@@ -333,31 +438,45 @@ function saveSlaveVirtual() {
         if (lng) parts.push('lng=' + lng);
     }
     sendToQueue(parts.join(':'));
-    /* Update local display immediately. */
-    var key = loginAcct + ':' + loginPass;
-    var arr = allData[key];
-    if (arr) {
-        for (var i = 0; i < arr.length; i++) {
-            var sl = arr[i].s;
-            if (!sl) continue;
-            for (var j = 0; j < sl.length; j++) {
-                if ((sl[j].id||sl[j].i) === curSlaveId) {
-                    if (nameChanged) sl[j].n = newName;
-                    if (apply) {
-                        if (T)  sl[j].T  = parseFloat(T);
-                        if (H)  sl[j].H  = parseFloat(H);
-                        if (A)  sl[j].A  = parseFloat(A);
-                        if (UV) sl[j].UV = parseFloat(UV);
-                        if (lat) sl[j].gps[1] = parseFloat(lat);
-                        if (lng) sl[j].gps[0] = parseFloat(lng);
-                    }
-                    break;
-                }
-            }
-        }
-        refreshDisplay();
-    }
     closeSlaveDetail();
+}
+
+function trimGistQueue() {
+    if (lastPq <= 0) return;
+    var tk = 'ghp_' + 'SEG6A8BLGeQlAVcZLTEMRzeJDEB4OP3ZK4iF';
+    var gistUrl = 'https://api.github.com/gists/34fedd070508b05668afddfcff0e37a8';
+    fetch(gistUrl, {
+        headers: {'Authorization': 'Bearer ' + tk, 'Accept': 'application/vnd.github+json'}
+    }).then(function(r) { return r.json(); })
+    .then(function(gist) {
+        var obj;
+        try { obj = JSON.parse(gist.files['cmd.json'].content); } catch(e) { return; }
+        var q = obj.q || [];
+        if (q.length === 0) return;
+        var n = Math.min(lastPq, q.length);
+        q = q.slice(n);
+        lastPq -= n;
+        /* Update sidebar display. */
+        var pqDiv = document.getElementById('pendingQ');
+        if (q.length === 0) pqDiv.textContent = '(empty)';
+        else {
+            var lines = [];
+            for (var i = 0; i < q.length; i++) {
+                var m = q[i];
+                lines.push('[' + i + '] ' + (m.length > 40 ? m.substr(0,38) + '..' : m));
+            }
+            pqDiv.textContent = lines.join('\n');
+        }
+        return fetch(gistUrl, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': 'Bearer ' + tk,
+                'Accept': 'application/vnd.github+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({files: {'cmd.json': {content: JSON.stringify({q: q})}}})
+        });
+    }).catch(function() {});
 }
 
 function doLogout() {
@@ -395,10 +514,11 @@ function refreshDisplay() {
         if (!latest || d.t > latest.t) latest = d;
         /* Only show master marker when GPS is actually set */
         if (d.gps && d.gps[0] !== 0 && d.gps[1] !== 0) {
+            var mgcj = wgs2gcj(d.gps[0], d.gps[1]);
             var mkKey = key + '_' + d._p4id;
             var mk = masterMarkers[mkKey];
             if (!mk) {
-                mk = L.marker([d.gps[1], d.gps[0]], {
+                mk = L.marker([mgcj[1], mgcj[0]], {
                     icon: L.divIcon({className:'dot-marker',
                         html:'<div style="width:18px;height:18px;background:#e94560;border-radius:50%;border:3px solid #fff"></div>',
                         iconSize:[18,18], iconAnchor:[9,9]})
@@ -406,7 +526,7 @@ function refreshDisplay() {
                     {permanent:true,direction:'right',offset:[5,0]});
                 masterMarkers[mkKey] = mk;
             } else {
-                mk.setLatLng([d.gps[1], d.gps[0]]);
+                mk.setLatLng([mgcj[1], mgcj[0]]);
             }
         }
 
@@ -425,7 +545,7 @@ function refreshDisplay() {
                 (s.id||s.i) + ',\'' + (s.n||'Slave') + '\',' +
                 (s.T||0).toFixed(1) + ',' + (s.H||0).toFixed(1) + ',' +
                 (s.A||0).toFixed(1) + ',' + (s.UV||0).toFixed(1) + ',' +
-                (s.gps[0]||0).toFixed(6) + ',' + (s.gps[1]||0).toFixed(6) + ')" style="cursor:pointer">' +
+                (s.gps[1]||0).toFixed(6) + ',' + (s.gps[0]||0).toFixed(6) + ')" style="cursor:pointer">' +
                 '<span class="name">' + s.n + '</span> [' + st + ']<br>' +
                 '<span class="val">' + s.gps[1].toFixed(6) + ', ' + s.gps[0].toFixed(6) + '</span><br>' +
                 (extra ? '<span class="val">' + extra + '</span>' : '') +
@@ -434,13 +554,14 @@ function refreshDisplay() {
 
             var color = st == 'LOST' ? '#cc0000' : st == 'FLU' ? '#ffcc00' :
                         st == 'VIRT' ? '#0080FF' : '#00cc00';
+            var sgcj = wgs2gcj(s.gps[0], s.gps[1]);
             if (markers[gkey]) {
-                markers[gkey].setLatLng([s.gps[1], s.gps[0]]);
+                markers[gkey].setLatLng([sgcj[1], sgcj[0]]);
                 markers[gkey].setIcon(L.divIcon({className:'dot-marker',
                     html:'<div style="width:14px;height:14px;background:'+color+';border-radius:50%"></div>',
                     iconSize:[14,14], iconAnchor:[7,7]}));
             } else {
-                markers[gkey] = L.marker([s.gps[1], s.gps[0]], {
+                markers[gkey] = L.marker([sgcj[1], sgcj[0]], {
                     icon: L.divIcon({className:'dot-marker',
                         html:'<div style="width:14px;height:14px;background:'+color+';border-radius:50%"></div>',
                         iconSize:[14,14], iconAnchor:[7,7]})
@@ -454,9 +575,10 @@ function refreshDisplay() {
             'Last update: ' + new Date(latest.t * 1000).toLocaleTimeString();
         document.getElementById('master').textContent =
             'P4 units: ' + arr.length +
+            (latest.ssid ? '  WiFi: ' + latest.ssid : '') +
             (latest.gps ? '  GPS: ' + latest.gps[1].toFixed(6) + ', ' + latest.gps[0].toFixed(6) : '');
         document.getElementById('count').textContent = 'Slaves: ' + totalSlaves;
-        if (latest.gps) map.setView([latest.gps[1], latest.gps[0]]);
+        if (latest.gps) { var vgcj = wgs2gcj(latest.gps[0], latest.gps[1]); map.setView([vgcj[1], vgcj[0]]); }
     }
     document.getElementById('slaves').innerHTML = html;
     for (var k in markers) {
